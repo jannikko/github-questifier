@@ -1,0 +1,16 @@
+{
+  "name": "questifier",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node ./bin/www"
+  },
+  "dependencies": {
+    "body-parser": "~1.13.2",
+    "debug": "~2.2.0",
+    "express": "~4.13.1",
+    "github": "^0.2.4",
+    "morgan": "~1.6.1",
+    "serve-favicon": "~2.3.0"
+  }
+}
