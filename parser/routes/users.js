@@ -15,7 +15,6 @@ router.get('/', function(req, res, next) {
     		'path': files[f].path,
     		commentLines: []
     	};
-    	var blockComment = "";
 		var lines = files[f].content.split("\n");
 
 		for (var l = 0; l < lines.length; l++) {
