@@ -4,25 +4,28 @@ var router = express.Router();
 var async = require('async');
 var url = require('url');
 var config = require('../config');
-var querystring = require('querystring');
+var qs = require('qs');
+var parser = require('./parser');
 
 var valid_filename_extensions = ['.js'];
 
 /* GET users listing. */
 router.get('/', function(req, res, next) {
-        var repo_id = req.query.owner + '/' + req.query.repo,
-        filtered_files,
-        list_of_files = {
-            'repository': repo_id,
-            'files': []
-        },
+    var repo_id = req.query.owner + '/' + req.query.repo,
         parameters = {
             recursive: 1,
             client_id: config.gh_clientId,
             client_secret: config.gh_secret
         },
         host = 'api.github.com',
-        path = '/repos/' + repo_id + '/git/trees/master';
+        path = '/repos/' + repo_id + '/git/trees/master?' + qs.stringify(parameters);
+
+    var filtered_files,
+        list_of_files = [],
+        repository = {
+            'repository': repo_id,
+            'files': []
+        };
 
     async.series([
             function(series_callback) {
@@ -36,21 +39,23 @@ router.get('/', function(req, res, next) {
             function(series_callback) {
                 async.each(filtered_files, function(file, each_callback) {
                     var content_url = url.parse(file.url);
-                    host = content_url.host;
-                    path = content_url.path;
                     parameters = {
                         client_id: config.gh_clientId,
                         client_secret: config.gh_secret
                     };
+
+                    host = content_url.host;
+                    path = content_url.path + '?' + qs.stringify(parameters);
+
                     request_api(host, path, function(contents_obj) {
                         if (contents_obj.encoding == 'base64') {
-                            list_of_files.files.push({
+                            list_of_files.push({
                                 'path': file.path,
                                 'content': new Buffer(contents_obj.content, 'base64').toString('utf8')
                             });
                         }
                         each_callback();
-                    }, parameters);
+                    });
                 }, function(err) {
                     if (err) {
                         console.log('A file failed to process');
@@ -63,7 +68,8 @@ router.get('/', function(req, res, next) {
             res.writeHead(200, {
                 'Content-Type': 'application/json'
             });
-            res.end(JSON.stringify(list_of_files));
+            repository.files = parser.parse(list_of_files);
+            res.end(JSON.stringify(repository));
             next();
         });
 });
@@ -77,10 +83,7 @@ function is_valid_file(file) {
     return false;
 }
 
-function request_api(host, path, callback, data) {
-    if (data) {
-        path += '?' + querystring.stringify(data);
-    }
+function request_api(host, path, callback) {
     var options = {
         headers: {
             'User-Agent': 'github-questifier'
