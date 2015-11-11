@@ -1,6 +1,7 @@
 //var files = examplejson.files;
 
-module.exports.parse = function(files) {
+module.exports.parse = function(repository) {
+    var files = repository.files;
     var parsedFiles = [];
 
     // @todo: register line numbers of parsed comments

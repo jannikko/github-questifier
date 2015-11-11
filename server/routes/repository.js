@@ -49,8 +49,8 @@ router.get('/', function(req, res, next) {
 
                     request_api(host, path, function(contents_obj) {
                         if (contents_obj.encoding == 'base64') {
-                            list_of_files.push({
-                                'path': file.path,
+                            repository.files.push({
+                                'link': file.url,
                                 'content': new Buffer(contents_obj.content, 'base64').toString('utf8')
                             });
                         }
@@ -68,8 +68,8 @@ router.get('/', function(req, res, next) {
             res.writeHead(200, {
                 'Content-Type': 'application/json'
             });
-            repository.files = parser.parse(list_of_files);
-            res.end(JSON.stringify(repository));
+            var quests = parser.parse(repository);
+            res.end(JSON.stringify(quests));
             next();
         });
 });
