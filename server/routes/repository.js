@@ -3,29 +3,42 @@ var https = require("https");
 var router = express.Router();
 var async = require('async');
 var url = require('url');
-var config = require('../config');
 var qs = require('qs');
+var config = require('../config');
 var parser = require('./parser');
 
+var valid_hostname = 'github.com'
 var valid_filename_extensions = ['.js'];
+var gh_url_regex = /^\/[\w\d]+\/[\w\d]+$/;
 
 /* GET users listing. */
 router.get('/', function(req, res, next) {
-    var repo_id = req.query.owner + '/' + req.query.repo,
-        parameters = {
-            recursive: 1,
-            client_id: config.gh_clientId,
-            client_secret: config.gh_secret
-        },
-        host = 'api.github.com',
-        path = '/repos/' + repo_id + '/git/trees/master?' + qs.stringify(parameters);
-
+    var github_url = req.query.url;
+    var repo_id;
+    if (github_url) {
+        validate_url(github_url, function(path) {
+            repo_id = path;
+        });
+    }
+    if (!repo_id) {
+        res.end('Not a valid url');
+        next();
+        return;
+    }
     var filtered_files,
         list_of_files = [],
         repository = {
             'repository': repo_id,
             'files': []
         };
+
+    var parameters = {
+            recursive: 1,
+            client_id: config.gh_clientId,
+            client_secret: config.gh_secret
+        },
+        host = 'api.github.com',
+        path = '/repos/' + repo_id + '/git/trees/master?' + qs.stringify(parameters);
 
     async.series([
             function(series_callback) {
@@ -50,7 +63,7 @@ router.get('/', function(req, res, next) {
                     request_api(host, path, function(contents_obj) {
                         if (contents_obj.encoding == 'base64') {
                             repository.files.push({
-                                'link': file.url,
+                                'link': 'https://github.com/' + repo_id + '/blob/master/' + file.path,
                                 'content': new Buffer(contents_obj.content, 'base64').toString('utf8')
                             });
                         }
@@ -73,6 +86,15 @@ router.get('/', function(req, res, next) {
             next();
         });
 });
+
+function validate_url(gh_url, callback) {
+    gh_url = url.parse(gh_url);
+    if (gh_url.hostname === valid_hostname && gh_url.path) {
+        if (gh_url_regex.test(gh_url.path)) {
+            callback(gh_url.path.slice(1, gh_url.path.length));
+        }
+    }
+}
 
 function is_valid_file(file) {
     for (var i = valid_filename_extensions.length - 1; i >= 0; i--) {
