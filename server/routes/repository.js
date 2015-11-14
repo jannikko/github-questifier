@@ -7,7 +7,7 @@ var qs = require('qs');
 var config = require('../config');
 var parser = require('./parser');
 
-var valid_hostname = 'github.com'
+var valid_hostname = 'github.com';
 var valid_filename_extensions = ['.js'];
 var gh_url_regex = /^\/[\w\d]+\/[\w\d]+$/;
 
@@ -42,11 +42,13 @@ router.get('/', function(req, res, next) {
 
     async.series([
             function(series_callback) {
-                request_api(host, path, function(files_obj) {
-                    var files = files_obj.tree;
-                    filtered_files = files.filter(is_valid_file);
+                request_api(host, path, function(err, result) {
+                    if (!err) {
+                        var files = result.tree;
+                        filtered_files = files.filter(is_valid_file);
+                    }
                     series_callback();
-                }, parameters);
+                });
             },
 
             function(series_callback) {
@@ -59,12 +61,11 @@ router.get('/', function(req, res, next) {
 
                     host = content_url.host;
                     path = content_url.path + '?' + qs.stringify(parameters);
-
-                    request_api(host, path, function(contents_obj) {
-                        if (contents_obj.encoding == 'base64') {
+                    request_api(host, path, function(err, result) {
+                        if (!err && result.encoding == 'base64') {
                             repository.files.push({
                                 'link': 'https://github.com/' + repo_id + '/blob/master/' + file.path,
-                                'content': new Buffer(contents_obj.content, 'base64').toString('utf8')
+                                'content': new Buffer(result.content, 'base64').toString('utf8')
                             });
                         }
                         each_callback();
@@ -114,15 +115,22 @@ function request_api(host, path, callback) {
         path: path
     };
     var request = https.get(options, function(resp) {
-        var data = "";
-        resp.setEncoding('utf8');
-        resp.on('data', function(chunk) {
-            data += chunk;
-        });
-        resp.on('end', function() {
-            callback(JSON.parse(data));
-        });
-    });
+        if (resp.statusCode !== 200) {
+            callback(new Error('Bad response from API'), undefined);
+        } else {
+            var data = "";
+            resp.setEncoding('utf8');
+            resp.on('data', function(chunk) {
+                data += chunk;
+            });
+            resp.on('end', function() {
+                try {
+                    callback(undefined, JSON.parse(data));
+                } catch (e) {
+                    callback(new Error('Unable to parse JSON'), undefined);
+                }
+            });
+}});
     request.end();
     request.on('error', function(e) {
         console.log(e);
