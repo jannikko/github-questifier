@@ -13,16 +13,17 @@ var gh_url_regex = /^\/[\w\d]+\/[\w\d]+$/;
 
 /* GET users listing. */
 router.get('/', function(req, res, next) {
+    'use strict';
     var github_url = req.query.url;
     var repo_id;
+
     if (github_url) {
         validate_url(github_url, function(path) {
             repo_id = path;
         });
     }
     if (!repo_id) {
-        res.end('Not a valid url');
-        next();
+        end_with_error(res, next, new Error('Invalid URL'));
         return;
     }
     var filtered_files,
@@ -31,8 +32,7 @@ router.get('/', function(req, res, next) {
             'repository': repo_id,
             'files': []
         };
-
-    var parameters = {
+    let parameters = {
             recursive: 1,
             client_id: config.gh_clientId,
             client_secret: config.gh_secret
@@ -44,23 +44,26 @@ router.get('/', function(req, res, next) {
             function(series_callback) {
                 request_api(host, path, function(err, result) {
                     if (!err) {
-                        var files = result.tree;
-                        filtered_files = files.filter(is_valid_file);
+                        let files = result.tree;
+                        filtered_files = files.filter(validate_file);
+                        series_callback();
+                        return;
                     }
-                    series_callback();
+                    series_callback(err);
                 });
             },
 
             function(series_callback) {
                 async.each(filtered_files, function(file, each_callback) {
-                    var content_url = url.parse(file.url);
-                    parameters = {
+                    
+                    let content_url = url.parse(file.url);
+                    let parameters = {
                         client_id: config.gh_clientId,
                         client_secret: config.gh_secret
-                    };
-
-                    host = content_url.host;
+                    },
+                    host = content_url.host,
                     path = content_url.path + '?' + qs.stringify(parameters);
+
                     request_api(host, path, function(err, result) {
                         if (!err && result.encoding == 'base64') {
                             repository.files.push({
@@ -79,14 +82,28 @@ router.get('/', function(req, res, next) {
             }
         ],
         function(err, results) {
-            res.writeHead(200, {
-                'Content-Type': 'application/json'
-            });
-            var quests = parser.parse(repository);
-            res.end(JSON.stringify(quests));
-            next();
+            if (err) {
+                end_with_error(res, next, err);
+            } else {
+                res.writeHead(200, {
+                    'Content-Type': 'application/json'
+                });
+                var quests = parser.parse(repository);
+                res.end(JSON.stringify(quests));
+                next();
+            }
         });
 });
+
+function end_with_error(res, next, err) {
+    res.writeHead(404, {
+        'Content-Type': 'application/json'
+    });
+    res.end(JSON.stringify({
+        message: err.message,
+    }));
+    next();
+}
 
 function validate_url(gh_url, callback) {
     gh_url = url.parse(gh_url);
@@ -97,7 +114,7 @@ function validate_url(gh_url, callback) {
     }
 }
 
-function is_valid_file(file) {
+function validate_file(file) {
     for (var i = valid_filename_extensions.length - 1; i >= 0; i--) {
         if (file.path.endsWith(valid_filename_extensions[i]) && file.type == 'blob') {
             return true;
@@ -116,6 +133,7 @@ function request_api(host, path, callback) {
     };
     var request = https.get(options, function(resp) {
         if (resp.statusCode !== 200) {
+            //log error here
             callback(new Error('Bad response from API'), undefined);
         } else {
             var data = "";
@@ -127,12 +145,16 @@ function request_api(host, path, callback) {
                 try {
                     callback(undefined, JSON.parse(data));
                 } catch (e) {
-                    callback(new Error('Unable to parse JSON'), undefined);
+                    //log error here
+                    callback(new Error('Incomplete response from API'), undefined);
                 }
             });
-}});
+        }
+    });
     request.end();
     request.on('error', function(e) {
+        //log error here
+        callback(new Error('Could not connect to API'), undefined);
         console.log(e);
     });
 }
