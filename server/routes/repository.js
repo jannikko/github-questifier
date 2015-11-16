@@ -9,7 +9,7 @@ var parser = require('./parser');
 
 var valid_hostname = 'github.com';
 var valid_filename_extensions = ['.js'];
-var gh_url_regex = /^\/[\w\d]+\/[\w\d]+$/;
+var gh_url_regex = /^\/[\w\d-]+\/[\w\d-]+$/;
 
 /* GET users listing. */
 router.get('/', function(req, res, next) {
