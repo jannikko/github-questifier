@@ -9,14 +9,13 @@ var parser = require('./parser');
 
 var valid_hostname = 'github.com';
 var valid_filename_extensions = ['.js'];
-var gh_url_regex = /^\/[\w\d-]+\/[\w\d-]+$/;
+var gh_url_regex = /^\/[\w\d-]+\/[\w\d-.]+$/;
 
 /* GET users listing. */
 router.get('/', function(req, res, next) {
     'use strict';
     var github_url = req.query.url;
     var repo_id;
-
     if (github_url) {
         validate_url(github_url, function(path) {
             repo_id = path;
@@ -76,6 +75,7 @@ router.get('/', function(req, res, next) {
                 }, function(err) {
                     if (err) {
                         console.log('A file failed to process');
+                        series_callback(new Error('A file failed to process'));
                     }
                     series_callback();
                 });
@@ -84,11 +84,12 @@ router.get('/', function(req, res, next) {
         function(err, results) {
             if (err) {
                 end_with_error(res, next, err);
+                return;
             } else {
                 res.writeHead(200, {
                     'Content-Type': 'application/json'
                 });
-                var quests = parser.parse(repository);
+                let quests = parser.parse(repository);
                 res.end(JSON.stringify(quests));
                 next();
             }
@@ -115,7 +116,8 @@ function validate_url(gh_url, callback) {
 }
 
 function validate_file(file) {
-    for (var i = valid_filename_extensions.length - 1; i >= 0; i--) {
+    'use strict';
+    for (let i = valid_filename_extensions.length - 1; i >= 0; i--) {
         if (file.path.endsWith(valid_filename_extensions[i]) && file.type == 'blob') {
             return true;
         }
@@ -124,19 +126,20 @@ function validate_file(file) {
 }
 
 function request_api(host, path, callback) {
-    var options = {
+    'use strict';
+    let options = {
         headers: {
             'User-Agent': 'github-questifier'
         },
         host: host,
         path: path
     };
-    var request = https.get(options, function(resp) {
+    let request = https.get(options, function(resp) {
         if (resp.statusCode !== 200) {
             //log error here
             callback(new Error('Bad response from API'), undefined);
         } else {
-            var data = "";
+            let data = "";
             resp.setEncoding('utf8');
             resp.on('data', function(chunk) {
                 data += chunk;
