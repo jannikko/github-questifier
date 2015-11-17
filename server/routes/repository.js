@@ -16,9 +16,10 @@ var logger = new(winston.Logger)({
 });
 var valid_hostname = 'github.com';
 var valid_filename_extensions = ['.js'];
-var gh_url_regex = /^\/[\w\d-]+\/[\w\d-._]+$/;
+var gh_url_regex = /^(https:\/\/)?github.com\/([\w\d-]+\/[\w\d-._]+)/;
 
 /* GET users listing. */
+/* TODO improve logging, refactor, error messages as JSON*/
 router.get('/', function(req, res, next) {
     'use strict';
     var github_url = req.query.url;
@@ -50,7 +51,7 @@ router.get('/', function(req, res, next) {
         path = '/repos/' + repo_id + '/git/trees/master?' + qs.stringify(parameters);
 
     async.series([
-            function(series_callback) {
+            function request_tree(series_callback) {
                 request_api(host, path, function(err, result) {
                     if (!err) {
                         let files = result.tree;
@@ -62,7 +63,7 @@ router.get('/', function(req, res, next) {
                 });
             },
 
-            function(series_callback) {
+            function request_content(series_callback) {
 
                 logger.info('Requesting ' + filtered_files.length + ' files from Github API.');
 
@@ -86,22 +87,22 @@ router.get('/', function(req, res, next) {
                     });
                 }, function(err) {
                     if (err) {
-                        logger.warn('A file failed to process:\n' + err);
+                        logger.warn('A file failed to process: ' + err);
                         series_callback(new Error('A file failed to process'));
                     }
                     series_callback();
                 });
             }
         ],
-        function(err, results) {
+        function parse_content(err, results) {
             if (err) {
                 end_with_error(res, next, err);
                 return;
             } else {
+                let quests = parser.parse(repository);
                 res.writeHead(200, {
                     'Content-Type': 'application/json'
                 });
-                let quests = parser.parse(repository);
                 res.end(JSON.stringify(quests));
                 next();
             }
@@ -119,11 +120,9 @@ function end_with_error(res, next, err) {
 }
 
 function validate_url(gh_url, callback) {
-    gh_url = url.parse(gh_url);
-    if (gh_url.hostname === valid_hostname && gh_url.path && gh_url.protocol === 'https:') {
-        if (gh_url_regex.test(gh_url.path)) {
-            callback(gh_url.path.slice(1, gh_url.path.length));
-        }
+    'use strict';
+    if (gh_url_regex.test(gh_url)) {
+        callback(gh_url_regex.exec(gh_url)[2]);
     }
 }
 
