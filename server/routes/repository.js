@@ -1,19 +1,36 @@
+'use strict';
 var express = require('express');
 var https = require("https");
 var router = express.Router();
 var async = require('async');
 var url = require('url');
 var qs = require('qs');
+var winston = require('winston');
 var config = require('../config');
 var parser = require('./parser');
 
+var logger = new(winston.Logger)({
+    transports: [
+        new(winston.transports.Console)({
+            'timestamp': true,
+            'colorize': true
+        }),
+        new(winston.transports.File)({
+            filename: 'server_log.log'
+        })
+    ]
+});
 var valid_hostname = 'github.com';
 var valid_filename_extensions = ['.js'];
-var gh_url_regex = /^\/[\w\d]+\/[\w\d]+$/;
+var gh_url_regex = /^(https:\/\/)?github.com\/([\w\d-]+\/[\w\d-._]+)/;
 
 /* GET users listing. */
+/* TODO improve logging, refactor, error messages as JSON*/
 router.get('/', function(req, res, next) {
     var github_url = req.query.url;
+
+    logger.info('Got URL "' + github_url + '" from client.');
+
     var repo_id;
     if (github_url) {
         validate_url(github_url, function(path) {
@@ -21,8 +38,7 @@ router.get('/', function(req, res, next) {
         });
     }
     if (!repo_id) {
-        res.end('Not a valid url');
-        next();
+        end_with_error(res, next, new Error('Invalid URL'));
         return;
     }
     var filtered_files,
@@ -31,37 +47,25 @@ router.get('/', function(req, res, next) {
             'repository': repo_id,
             'files': []
         };
-
-    var parameters = {
-            recursive: 1,
-            client_id: config.gh_clientId,
-            client_secret: config.gh_secret
-        },
-        host = 'api.github.com',
-        path = '/repos/' + repo_id + '/git/trees/master?' + qs.stringify(parameters);
+        var tree_request = create_tree_request(repo_id);
 
     async.series([
-            function(series_callback) {
-                request_api(host, path, function(err, result) {
+            function request_tree(series_callback) {
+                tree_request(function(err, result) {
                     if (!err) {
-                        var files = result.tree;
-                        filtered_files = files.filter(is_valid_file);
+                        let files = result.tree;
+                        filtered_files = files.filter(validate_file);
+                        series_callback();
+                        return;
                     }
-                    series_callback();
+                    series_callback(err);
                 });
             },
-
-            function(series_callback) {
+            function request_content(series_callback) {
+                logger.info('Requesting ' + filtered_files.length + ' files from Github API.');
                 async.each(filtered_files, function(file, each_callback) {
-                    var content_url = url.parse(file.url);
-                    parameters = {
-                        client_id: config.gh_clientId,
-                        client_secret: config.gh_secret
-                    };
-
-                    host = content_url.host;
-                    path = content_url.path + '?' + qs.stringify(parameters);
-                    request_api(host, path, function(err, result) {
+                    let file_request = create_file_request(file);
+                    file_request(function(err, result) {
                         if (!err && result.encoding == 'base64') {
                             repository.files.push({
                                 'link': 'https://github.com/' + repo_id + '/blob/master/' + file.path,
@@ -72,34 +76,75 @@ router.get('/', function(req, res, next) {
                     });
                 }, function(err) {
                     if (err) {
-                        console.log('A file failed to process');
+                        logger.warn('A file failed to process: ' + err);
+                        series_callback(new Error('A file failed to process'));
                     }
                     series_callback();
                 });
             }
         ],
-        function(err, results) {
-            res.writeHead(200, {
-                'Content-Type': 'application/json'
-            });
-            var quests = parser.parse(repository);
-            res.end(JSON.stringify(quests));
-            next();
+        function parse_content(err, results) {
+            if (err) {
+                end_with_error(res, next, err);
+                return;
+            } else {
+                let quests = parser.parse(repository);
+                res.writeHead(200, {
+                    'Content-Type': 'application/json'
+                });
+                res.end(JSON.stringify(quests));
+                next();
+            }
         });
 });
 
+function create_tree_request (repo_id) {
+      let parameters = {
+            recursive: 1,
+            client_id: config.gh_clientId,
+            client_secret: config.gh_secret
+        },
+        host = 'api.github.com',
+        path = '/repos/' + repo_id + '/git/trees/master?' + qs.stringify(parameters);
+
+        return function(callback){
+            request_api(host, path, callback);
+        };
+}
+
+function create_file_request(file) {
+    let content_url = url.parse(file.url);
+    let parameters = {
+            client_id: config.gh_clientId,
+            client_secret: config.gh_secret
+        },
+        host = content_url.host,
+        path = content_url.path + '?' + qs.stringify(parameters);
+
+    return function(callback)  {
+        request_api(host, path, callback);
+    };
+}
+
+function end_with_error(res, next, err) {
+    res.writeHead(404, {
+        'Content-Type': 'application/json'
+    });
+    res.end(JSON.stringify({
+        message: err.message,
+    }));
+    next();
+}
+
 function validate_url(gh_url, callback) {
-    gh_url = url.parse(gh_url);
-    if (gh_url.hostname === valid_hostname && gh_url.path) {
-        if (gh_url_regex.test(gh_url.path)) {
-            callback(gh_url.path.slice(1, gh_url.path.length));
-        }
+    if (gh_url_regex.test(gh_url)) {
+        callback(gh_url_regex.exec(gh_url)[2]);
     }
 }
 
-function is_valid_file(file) {
-    for (var i = valid_filename_extensions.length - 1; i >= 0; i--) {
-        if (file.path.endsWith(valid_filename_extensions[i]) && file.type == 'blob') {
+function validate_file(file) {
+    for (let i = valid_filename_extensions.length - 1; i >= 0; i--) {
+        if (file.path.endsWith(valid_filename_extensions[i]) && file.type === 'blob') {
             return true;
         }
     }
@@ -107,33 +152,39 @@ function is_valid_file(file) {
 }
 
 function request_api(host, path, callback) {
-    var options = {
+    let options = {
         headers: {
             'User-Agent': 'github-questifier'
         },
         host: host,
         path: path
     };
-    var request = https.get(options, function(resp) {
-        if (resp.statusCode !== 200) {
-            callback(new Error('Bad response from API'), undefined);
-        } else {
-            var data = "";
-            resp.setEncoding('utf8');
-            resp.on('data', function(chunk) {
-                data += chunk;
-            });
-            resp.on('end', function() {
-                try {
-                    callback(undefined, JSON.parse(data));
-                } catch (e) {
-                    callback(new Error('Unable to parse JSON'), undefined);
-                }
-            });
-}});
+    let request = https.get(options, function(resp) {
+        let data = "";
+        resp.setEncoding('utf8');
+        resp.on('data', function(chunk) {
+            data += chunk;
+        });
+        resp.on('end', function() {
+            try {
+                data = JSON.parse(data);
+            } catch (e) {
+                logger.error('Unable to parse JSON from API: ' + e);
+                callback(new Error('Incomplete response from API'), undefined);
+                return;
+            }
+            if (resp.statusCode === 200) {
+                callback(undefined, data);
+            } else {
+                logger.error('Response from API: ' + resp.statusCode + ' - ' + data.message);
+                callback(new Error('Bad response from API'), undefined);
+            }
+        });
+    });
     request.end();
     request.on('error', function(e) {
-        console.log(e);
+        logger.error('Could not connect to API: ' + e);
+        callback(new Error('Could not connect to API'), undefined);
     });
 }
 
