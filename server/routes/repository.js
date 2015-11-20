@@ -31,12 +31,7 @@ router.get('/', function(req, res, next) {
 
     logger.info('Got URL "' + github_url + '" from client.');
 
-    var repo_id;
-    if (github_url) {
-        validate_url(github_url, function(path) {
-            repo_id = path;
-        });
-    }
+    var repo_id = get_repo_id(github_url);
     if (!repo_id) {
         end_with_error(res, next, new Error('Invalid URL'));
         return;
@@ -47,11 +42,9 @@ router.get('/', function(req, res, next) {
             'repository': repo_id,
             'files': []
         };
-        var tree_request = create_tree_request(repo_id);
-
     async.series([
-            function request_tree(series_callback) {
-                tree_request(function(err, result) {
+            function async_request_tree(series_callback) {
+                request_tree(repo_id, function(err, result) {
                     if (!err) {
                         let files = result.tree;
                         filtered_files = files.filter(validate_file);
@@ -61,11 +54,10 @@ router.get('/', function(req, res, next) {
                     series_callback(err);
                 });
             },
-            function request_content(series_callback) {
+            function async_request_content(series_callback) {
                 logger.info('Requesting ' + filtered_files.length + ' files from Github API.');
                 async.each(filtered_files, function(file, each_callback) {
-                    let file_request = create_file_request(file);
-                    file_request(function(err, result) {
+                    request_file(file, function(err, result) {
                         if (!err && result.encoding == 'base64') {
                             repository.files.push({
                                 'link': 'https://github.com/' + repo_id + '/blob/master/' + file.path,
@@ -98,8 +90,8 @@ router.get('/', function(req, res, next) {
         });
 });
 
-function create_tree_request (repo_id) {
-      let parameters = {
+function request_tree(repo_id, callback) {
+    let parameters = {
             recursive: 1,
             client_id: config.gh_clientId,
             client_secret: config.gh_secret
@@ -107,12 +99,10 @@ function create_tree_request (repo_id) {
         host = 'api.github.com',
         path = '/repos/' + repo_id + '/git/trees/master?' + qs.stringify(parameters);
 
-        return function(callback){
-            request_api(host, path, callback);
-        };
+    request_api(host, path, callback);
 }
 
-function create_file_request(file) {
+function request_file(file, callback) {
     let content_url = url.parse(file.url);
     let parameters = {
             client_id: config.gh_clientId,
@@ -120,10 +110,8 @@ function create_file_request(file) {
         },
         host = content_url.host,
         path = content_url.path + '?' + qs.stringify(parameters);
-
-    return function(callback)  {
-        request_api(host, path, callback);
-    };
+    
+    request_api(host, path, callback);
 }
 
 function end_with_error(res, next, err) {
@@ -136,10 +124,11 @@ function end_with_error(res, next, err) {
     next();
 }
 
-function validate_url(gh_url, callback) {
-    if (gh_url_regex.test(gh_url)) {
-        callback(gh_url_regex.exec(gh_url)[2]);
+function get_repo_id(gh_url) {
+    if (gh_url && gh_url_regex.test(gh_url)) {
+        return gh_url_regex.exec(gh_url)[2];
     }
+    return undefined;
 }
 
 function validate_file(file) {
