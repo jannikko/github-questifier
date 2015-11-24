@@ -12,7 +12,7 @@
     "express": "~4.13.1",
     "github": "^0.2.4",
     "morgan": "~1.6.1",
-    "qs": "^6.0.0",
+    "querystring": "^0.2.0",
     "request": "^2.65.0",
     "serve-favicon": "~2.3.0",
     "winston": "^2.1.0"
