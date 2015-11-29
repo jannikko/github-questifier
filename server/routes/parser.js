@@ -12,7 +12,7 @@ module.exports.parse = function(repository) {
     // TODO: faciliate deletion of block comment end syntax ('*/) by replacing end_index_subtract 
 
     var push_quests_to_file = function (quests) {
-        file.quests.push(quests);
+        file.quests = file.quests.concat(quests);
     };
 
     for (var f = 0; f < files.length; f++) {
