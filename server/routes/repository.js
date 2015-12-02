@@ -19,6 +19,14 @@ var logger = new(winston.Logger)({
         })
     ]
 });
+
+function ApiError(status, name, message) {
+    this.status = status;
+    this.name = name;
+    this.message = (message || "");
+}
+ApiError.prototype = Error.prototype;
+
 var valid_hostname = 'github.com';
 var valid_filename_extensions = ['.js'];
 var gh_url_regex = /^(https:\/\/)?github.com\/([\w\d-]+\/[\w\d-._]+)/;
@@ -30,7 +38,7 @@ if (typeof String.prototype.endsWith !== 'function') {
 }
 
 /* GET users listing. */
-/* TODO improve logging, refactor, error messages as JSON*/
+/* TODO improve logging, passport authentication*/
 router.get('/', function(req, res, next) {
     var github_url = req.query.url;
 
@@ -39,7 +47,7 @@ router.get('/', function(req, res, next) {
     var repo_id = get_repo_id(github_url);
     if (!repo_id) {
         logger.info('Invalid URL: "' + github_url + '"');
-        end_with_error(res, next, new Error('Invalid URL'));
+        end_with_error(res, next, new ApiError(400, 'Bad Request', 'Invalid URL'));
         return;
     }
     var filtered_files,
@@ -68,7 +76,7 @@ router.get('/', function(req, res, next) {
                         series_callback();
                     }else{
                         logger.warn('A file failed to process: ' + err);
-                        series_callback(new Error('A file failed to process'));
+                        series_callback(new ApiError(500, 'Internal Server Error', 'A file failed to process'));
                     }
                 });
             }
@@ -127,12 +135,10 @@ function request_file(file, callback) {
 }
 
 function end_with_error(res, next, err) {
-    res.writeHead(404, {
+    res.writeHead(err.status, {
         'Content-Type': 'application/json'
     });
-    res.end(JSON.stringify({
-        message: err.message,
-    }));
+    res.end(JSON.stringify(err));
     next();
 }
 
@@ -171,21 +177,21 @@ function request_api(host, path, callback) {
                 data = JSON.parse(data);
             } catch (e) {
                 logger.error('Unable to parse JSON from API: ' + e);
-                callback(new Error('Incompvare response from API'), null);
+                callback(new ApiError(500, 'Internal Server Error','Unable to parse JSON from API'), null);
                 return;
             }
             if (resp.statusCode === 200) {
                 callback(null, data);
             } else {
                 logger.error('Response from API: ' + resp.statusCode + ' - ' + data.message);
-                callback(new Error('Bad response from API'), null);
+                callback(new ApiError(404, 'Not Found', 'Bad response from API'), null);
             }
         });
     });
     request.end();
     request.on('error', function(e) {
         logger.error('Could not connect to API: ' + e);
-        callback(new Error('Could not connect to API'), null);
+        callback(new ApiError(503, 'Service Unavailable','Could not connect to API'), null);
     });
 }
 
