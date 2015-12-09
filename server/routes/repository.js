@@ -29,7 +29,7 @@ ApiError.prototype = Error.prototype;
 
 var valid_hostname = 'github.com';
 var valid_filename_extensions = ['.js'];
-var gh_url_regex = /^(https:\/\/)?github.com\/([\w\d-]+\/[\w\d-._]+)/;
+var gh_url_regex = /^(https:\/\/)?(www.)?github.com\/([\w\d-]+\/[\w\d-._]+)/;
 
 if (typeof String.prototype.endsWith !== 'function') {
     String.prototype.endsWith = function(suffix) {
@@ -40,6 +40,7 @@ if (typeof String.prototype.endsWith !== 'function') {
 /* GET users listing. */
 /* TODO improve logging, passport authentication*/
 router.get('/', function(req, res, next) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
     var github_url = req.query.url;
 
     logger.info('Got URL "' + github_url + '" from client.');
@@ -130,7 +131,7 @@ function request_file(file, callback) {
         },
         host = content_url.host,
         path = content_url.path + '?' + qs.stringify(parameters);
-    
+
     request_api(host, path, callback);
 }
 
@@ -144,7 +145,7 @@ function end_with_error(res, next, err) {
 
 function get_repo_id(gh_url) {
     if (gh_url && gh_url_regex.test(gh_url)) {
-        return gh_url_regex.exec(gh_url)[2];
+        return gh_url_regex.exec(gh_url)[3];
     }
     return null;
 }
