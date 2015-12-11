@@ -7,7 +7,7 @@ var qs = require('querystring');
 var _ = require('underscore');
 var config = require('../config');
 var parser = require('./parser');
-var parser_config = require('../parser/config');
+var supported_languages = require('../parser/config');
 var logger = config.logger;
 
 function ApiError(status, name, message) {
@@ -17,7 +17,7 @@ function ApiError(status, name, message) {
 }
 ApiError.prototype = Error.prototype;
 
-var supported_languages = _.keys(parser_config.supported_languages);
+var supported_languages = _.keys(supported_languages);
 var valid_hostname = 'github.com';
 var gh_url_regex = /^(https:\/\/)?(www.)?github.com\/([\w\d-]+\/[\w\d-._]+)/;
 

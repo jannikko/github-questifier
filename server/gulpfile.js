@@ -20,7 +20,7 @@ gulp.task('create-config', ['compile-grammar'], function() {
     }).reduce(function(prev, current){
       return _.extend(prev, current);
     });
-    fs.writeFile('./parser/config.js', "module.exports.supported_languages = " + JSON.stringify(files) + ";", function(err) {
+    fs.writeFile('./parser/config.json', JSON.stringify(files), function(err) {
       if (err) return console.log(err);
     });
   });

@@ -21,6 +21,6 @@
   },
   "devDependencies": {
     "gulp": "^3.9.0",
-    "gulp-pegjs": "0.0.1"
+    "gulp-peg": "^0.2.0"
   }
 }
