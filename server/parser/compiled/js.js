@@ -48,7 +48,7 @@ module.exports = (function() {
         peg$c9 = { type: "literal", value: "//", description: "\"//\"" },
         peg$c10 = /^[^\r\n]/,
         peg$c11 = { type: "class", value: "[^\\r\\n]", description: "[^\\r\\n]" },
-        peg$c12 = function(t, s) {save(s.join("").trim())},
+        peg$c12 = function(s) {save(s.join("").trim())},
         peg$c13 = "@",
         peg$c14 = { type: "literal", value: "@", description: "\"@\"" },
         peg$c15 = "TODO",
@@ -412,7 +412,7 @@ module.exports = (function() {
             }
             if (s4 !== peg$FAILED) {
               peg$savedPos = s0;
-              s1 = peg$c12(s3, s4);
+              s1 = peg$c12(s4);
               s0 = s1;
             } else {
               peg$currPos = s0;

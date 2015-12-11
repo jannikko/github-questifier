@@ -3,7 +3,8 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "start": "node ./bin/www"
+    "start": "node ./bin/www",
+    "gulp": "./node_modules/.bin/gulp"
   },
   "dependencies": {
     "async": "^1.5.0",
@@ -15,6 +16,11 @@
     "querystring": "^0.2.0",
     "request": "^2.65.0",
     "serve-favicon": "~2.3.0",
+    "underscore": "^1.8.3",
     "winston": "^2.1.0"
+  },
+  "devDependencies": {
+    "gulp": "^3.9.0",
+    "gulp-pegjs": "0.0.1"
   }
 }

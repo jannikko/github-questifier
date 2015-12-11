@@ -4,21 +4,11 @@ var router = express.Router();
 var async = require('async');
 var url = require('url');
 var qs = require('querystring');
-var winston = require('winston');
+var _ = require('underscore');
 var config = require('../config');
 var parser = require('./parser');
-
-var logger = new(winston.Logger)({
-    transports: [
-        new(winston.transports.Console)({
-            'timestamp': true,
-            'colorize': true
-        }),
-        new(winston.transports.File)({
-            filename: 'server_log.log'
-        })
-    ]
-});
+var parser_config = require('../parser/config');
+var logger = config.logger;
 
 function ApiError(status, name, message) {
     this.status = status;
@@ -27,8 +17,8 @@ function ApiError(status, name, message) {
 }
 ApiError.prototype = Error.prototype;
 
+var supported_languages = _.keys(parser_config.supported_languages);
 var valid_hostname = 'github.com';
-var valid_filename_extensions = ['.js'];
 var gh_url_regex = /^(https:\/\/)?(www.)?github.com\/([\w\d-]+\/[\w\d-._]+)/;
 
 if (typeof String.prototype.endsWith !== 'function') {
@@ -97,13 +87,18 @@ router.get('/', function(req, res, next) {
         });
 });
 
+function get_file_extension(filepath){
+  return filepath.substr(filepath.lastIndexOf('.')+1);
+}
+
 function map_to_content(file, callback) {
     var repo_id = this.repo_id;
     request_file(file, function(err, result) {
         if (!err && result.encoding == 'base64') {
             callback(null, {
                 'link': 'https://github.com/' + repo_id + '/blob/master/' + file.path,
-                'content': new Buffer(result.content, 'base64').toString('utf8')
+                'content': new Buffer(result.content, 'base64').toString('utf8'),
+                'extension' : get_file_extension(file.path)
             });
         } else {
             callback(err, null);
@@ -151,8 +146,8 @@ function get_repo_id(gh_url) {
 }
 
 function validate_file(file) {
-    for (var i = valid_filename_extensions.length - 1; i >= 0; i--) {
-        if (file.path.endsWith(valid_filename_extensions[i]) && file.type === 'blob') {
+    for (var i = supported_languages.length - 1; i >= 0; i--) {
+        if (get_file_extension(file.path) == supported_languages[i] && file.type === 'blob') {
             return true;
         }
     }
