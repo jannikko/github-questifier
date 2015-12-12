@@ -7,17 +7,11 @@ var qs = require('querystring');
 var _ = require('underscore');
 var config = require('../config');
 var parser = require('./parser');
-var supported_languages = require('../parser/config');
+
+var supported_languages = _.keys(config.supported_languages);
 var logger = config.logger;
+var ApiError = config.ApiError;
 
-function ApiError(status, name, message) {
-    this.status = status;
-    this.name = name;
-    this.message = (message || "");
-}
-ApiError.prototype = Error.prototype;
-
-var supported_languages = _.keys(supported_languages);
 var valid_hostname = 'github.com';
 var gh_url_regex = /^(https:\/\/)?(www.)?github.com\/([\w\d-]+\/[\w\d-._]+)/;
 

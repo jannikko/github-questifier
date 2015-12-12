@@ -1,10 +1,10 @@
 var _ = require('underscore');
 var config = require('../config');
-var supported_languages = require('../parser/config');
 
+var supported_languages = config.supported_languages;
 var logger = config.logger;
-var parsers = {};
 
+var parsers = {};
 for (var language in supported_languages) {
   if (supported_languages.hasOwnProperty(language)) {
     try {
