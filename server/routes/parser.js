@@ -19,7 +19,6 @@ for (var language in supported_languages) {
 }
 
 module.exports.parse = function(repository) {
-
   // TODO This is just for testing purposes
 
   // get the fies from the repository object
@@ -38,22 +37,27 @@ module.exports.parse = function(repository) {
     if (file.extension in parsers) {
       parsed_content = parsers[file.extension].parse(content);
     }
+
     // if the parser found one or more TODOs
     if (parsed_content && parsed_content.length > 0) {
       file_obj = {
         'path': file.link,
         'quests': []
       };
+
       // iterate over the TODOs
       parsed_content.forEach(function(quest) {
         // append the line to the URL, where the quest was found
         quest.line = file.link + '#L' + quest.line;
+
         // push the "quest" to the file_obj
         file_obj.quests.push(quest);
       });
+
       // push the file_obj to the files list
       parsedRepository.files.push(file_obj);
     }
   });
+
   return parsedRepository;
 };
