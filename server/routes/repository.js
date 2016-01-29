@@ -17,92 +17,94 @@ var GH_URL_REGEX = /^(https:\/\/)?(www.)?github.com\/([\w\d-]+\/[\w\d-._]+)/;
 
 // define endsWith function for ES6 incompatible environments
 if (typeof String.prototype.endsWith !== 'function') {
-    String.prototype.endsWith = function(suffix) {
-        return this.indexOf(suffix, this.length - suffix.length) !== -1;
-    };
+  String.prototype.endsWith = function(suffix) {
+    return this.indexOf(suffix, this.length - suffix.length) !== -1;
+  };
 }
 
 /* GET users listing. */
 /* TODO improve logging, passport authentication*/
 router.get('/', function(req, res, next) {
-    // set this header to avoid cross-origin problem
-    res.setHeader('Access-Control-Allow-Origin', '*');
+  // set this header to avoid cross-origin problem
+  res.setHeader('Access-Control-Allow-Origin', '*');
 
-    // get url parameter
-    var github_url = req.query.url;
-    logger.info('Got URL "' + github_url + '" from client.');
+  // get url parameter
+  var github_url = req.query.url;
+  logger.info('Got URL "' + github_url + '" from client.');
 
-    // verify url input
-    var repo_id = get_repo_id(github_url);
-    if (!repo_id) {
-        // if the url didnt match the regex end with error
-        logger.info('Invalid URL: "' + github_url + '"');
-        next(new ApiError(400, 'Bad Request', 'Invalid URL'));
-        return;
-    }
+  // verify url input
+  var repo_id = get_repo_id(github_url);
+  if (!repo_id) {
+    // if the url didnt match the regex end with error
+    logger.info('Invalid URL: "' + github_url + '"');
+    return next(new ApiError(400, 'Bad Request', 'Invalid URL'));
+  }
 
-    var filtered_files,
-        list_of_files = [],
+  var filtered_files,
+  list_of_files = [],
 
-        repository = {
-            'repository': repo_id,
-            'files': []
-        };
+    repository = {
+      'repository': repo_id,
+      'files': []
+    };
 
     // execute series of API requests
     async.series([
-            function async_request_tree(series_callback) {
-                // requests file structure from GitHub API
-                request_tree(repo_id, function(err, result) {
-                    if (!err) {
-                        var files = result.tree;
+      function async_request_tree(series_callback) {
+        // requests file structure from GitHub API
+        request_tree(repo_id, function(err, result) {
+          if (!err) {
+            var files = result.tree;
 
-                        // filter out files with invalid file extensions
-                        filtered_files = files.filter(validate_file);
+            // filter out files with invalid file extensions
+            filtered_files = files.filter(validate_file);
 
-                        // callback to signal that request is finished
-                        series_callback();
-                        return;
-                    }
-
-                    // callback with err to signal that something went wrong
-                    series_callback(err);
-                });
-            },
-
-            function async_request_content(series_callback) {
-                logger.info('Requesting ' + filtered_files.length + ' files from Github API.');
-
-                // request content for each file and create an object with link, content and file extension
-                async.map(filtered_files, map_to_content.bind({'repo_id': repo_id}), function(err, results) {
-                    if (!err) {
-                        // on success map returns an array of the objects
-                        repository.files = results;
-                        series_callback();
-                        return;
-                    }
-
-                    logger.warn('A file failed to process: ' + err);
-                    series_callback(new ApiError(500, 'Internal Server Error', 'A file failed to process'));
-                });
+            // checks if too many file requests would be generated
+            if(filtered_files.length > config.MAX_FILE_REQUESTS){
+              series_callback(new ApiError(403, 'Forbidden', 'Too many files in the repository'));
+              return;
             }
-        ],
-        function parse_content(err, results) {
-            if (err) {
-                next(err);
-                return;
-            }
+            // callback to signal that request is finished
+            series_callback();
+            return;
+          }
 
-            // parse the content of all files and send them to the user
-            var quests = parser.parse(repository);
-            res.writeHead(200, {
-                'Content-Type': 'application/json'
-            });
-
-            res.end(JSON.stringify(quests));
-            next();
+          // callback with err to signal that something went wrong
+          series_callback(err);
         });
+      },
+
+      function async_request_content(series_callback) {
+        logger.info('Requesting ' + filtered_files.length + ' files from Github API.');
+
+        // request content for each file and create an object with link, content and file extension
+        async.map(filtered_files, map_to_content.bind({'repo_id': repo_id}), function(err, results) {
+          if (!err) {
+            // on success map returns an array of the objects
+            repository.files = results;
+            series_callback();
+            return;
+          }
+
+          logger.warn('A file failed to process: ' + err);
+          series_callback(new ApiError(500, 'Internal Server Error', 'A file failed to process'));
+        });
+      }
+    ],
+    function parse_content(err, results) {
+      if (err) return next(err);
+
+      // parse the content of all files and send them to the user
+      var quests = parser.parse(repository);
+      res.writeHead(200, {
+        'Content-Type': 'application/json'
+      });
+
+      res.end(JSON.stringify(quests));
+      return next();
+    });
 });
+
 
 /**
  * get_file_extension() returns a substring of the file extension
@@ -122,19 +124,19 @@ function get_file_extension(filepath){
  * @callback {Function} callback - called with object containing link, content and file extension
  */
 function map_to_content(file, callback) {
-    var repo_id = this.repo_id;
-    request_file(file, function(err, result) {
-        if (!err && result.encoding == 'base64') {
-            callback(null, {
-                'link': 'https://github.com/' + repo_id + '/blob/master/' + file.path,
-                'content': new Buffer(result.content, 'base64').toString('utf8'),
-                'extension' : get_file_extension(file.path)
-            }
-          );
-        } else {
-            callback(err, null);
-        }
-    });
+  var self = this;
+  request_file(file, function(err, result) {
+    if (!err && result.encoding == 'base64') {
+      callback(null, {
+        'link': 'https://github.com/' + self.repo_id + '/blob/master/' + file.path,
+        'content': new Buffer(result.content, 'base64').toString('utf8'),
+        'extension' : get_file_extension(file.path)
+      }
+              );
+    } else {
+      callback(err, null);
+    }
+  });
 }
 
 /**
@@ -144,14 +146,14 @@ function map_to_content(file, callback) {
  * @callback {Function} callback - on success will be called with either err or data
  */
 function request_tree(repo_id, callback) {
-    var parameters = {
-            recursive: 1,
-            client_id: config.gh_clientId,
-            client_secret: config.gh_secret
-        },
-        host = 'api.github.com',
-        path = '/repos/' + repo_id + '/git/trees/master?' + qs.stringify(parameters);
-        request_api(host, path, callback);
+  var parameters = {
+    recursive: 1,
+    client_id: config.gh_clientId,
+    client_secret: config.gh_secret
+  },
+  host = 'api.github.com',
+    path = '/repos/' + repo_id + '/git/trees/master?' + qs.stringify(parameters);
+    request_api(host, path, callback);
 }
 
 /**
@@ -161,14 +163,14 @@ function request_tree(repo_id, callback) {
  * @callback {Function} callback
  */
 function request_file(file, callback) {
-    var content_url = url.parse(file.url);
-    var parameters = {
-            client_id: config.gh_clientId,
-            client_secret: config.gh_secret
-        },
-        host = content_url.host,
-        path = content_url.path + '?' + qs.stringify(parameters);
-        request_api(host, path, callback);
+  var content_url = url.parse(file.url);
+  var parameters = {
+    client_id: config.gh_clientId,
+    client_secret: config.gh_secret
+  },
+  host = content_url.host,
+    path = content_url.path + '?' + qs.stringify(parameters);
+    request_api(host, path, callback);
 }
 
 /**
@@ -178,11 +180,11 @@ function request_file(file, callback) {
  * @return {String} gh_id - contains either 'username/repository' or null
  */
 function get_repo_id(gh_url) {
-    if (gh_url && GH_URL_REGEX.test(gh_url)) {
-        return GH_URL_REGEX.exec(gh_url)[3];
-    }
+  if (gh_url && GH_URL_REGEX.test(gh_url)) {
+    return GH_URL_REGEX.exec(gh_url)[3];
+  }
 
-    return null;
+  return null;
 }
 
 /**
@@ -192,14 +194,15 @@ function get_repo_id(gh_url) {
  * @return {Boolean} - true if file extension is supported
  */
 function validate_file(file) {
-    for (var i = supported_languages.length - 1; i >= 0; i--) {
-        if (get_file_extension(file.path) == supported_languages[i] && file.type === 'blob') {
-            return true;
-        }
+  for (var i = supported_languages.length - 1; i >= 0; i--) {
+    if (get_file_extension(file.path) == supported_languages[i] && file.type === 'blob') {
+      return true;
     }
+  }
 
-    return false;
+  return false;
 }
+
 
 /**
  * request_api() makes a GET request to the specified API
@@ -209,40 +212,40 @@ function validate_file(file) {
  * @callback {Function} - called with the response JSON from API
  */
 function request_api(host, path, callback) {
-    var options = {
-        headers: {
-            'User-Agent': 'github-questifier'
-        },
-        host: host,
-        path: path
-    };
-    var request = https.get(options, function(resp) {
-        var data = "";
-        resp.setEncoding('utf8');
-        resp.on('data', function(chunk) {
-            data += chunk;
-        });
-        resp.on('end', function() {
-            try {
-                data = JSON.parse(data);
-            } catch (e) {
-                logger.error('Unable to parse JSON from API: ' + e);
-                callback(new ApiError(500, 'Internal Server Error','Unable to parse JSON from API'), null);
-                return;
-            }
-            if (resp.statusCode === 200) {
-                callback(null, data);
-            } else {
-                logger.error('Response from API: ' + resp.statusCode + ' - ' + data.message);
-                callback(new ApiError(404, 'Not Found', 'Bad response from API'), null);
-            }
-        });
+  var options = {
+    headers: {
+      'User-Agent': 'github-questifier'
+    },
+    host: host,
+    path: path
+  };
+  var request = https.get(options, function(resp) {
+    var data = "";
+    resp.setEncoding('utf8');
+    resp.on('data', function(chunk) {
+      data += chunk;
     });
-    request.end();
-    request.on('error', function(e) {
-        logger.error('Could not connect to API: ' + e);
-        callback(new ApiError(503, 'Service Unavailable','Could not connect to API'), null);
+    resp.on('end', function() {
+      try {
+        data = JSON.parse(data);
+      } catch (e) {
+        logger.error('Unable to parse JSON from API: ' + e);
+        callback(new ApiError(500, 'Internal Server Error','Unable to parse JSON from API'), null);
+        return;
+      }
+      if (resp.statusCode === 200) {
+        callback(null, data);
+      } else {
+        logger.error('Response from API: ' + resp.statusCode + ' - ' + data.message);
+        callback(new ApiError(404, 'Not Found', 'Bad response from API'), null);
+      }
     });
+  });
+  request.end();
+  request.on('error', function(e) {
+    logger.error('Could not connect to API: ' + e);
+    callback(new ApiError(503, 'Service Unavailable','Could not connect to API'), null);
+  });
 }
 
 module.exports = router;

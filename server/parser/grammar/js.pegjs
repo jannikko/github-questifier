@@ -26,9 +26,6 @@ single_line_comment
 todo
 = "@"?"TODO"":"?
 
-identifier
-  =  a:([a-z] / [A-Z] / "_") b:([a-z] / [A-Z] / [0-9] /"_")* {return a + b.join("");}
-
 spaces
   =  [ \t\r\n]+ {return "";}
 

@@ -29,6 +29,7 @@ var logger = new(winston.Logger)({
 });
 config.logger = logger;
 
+config.MAX_FILE_REQUESTS = 1000;
 /**
  * ApiError() creates a custom Error object
  * used to send back to the client
